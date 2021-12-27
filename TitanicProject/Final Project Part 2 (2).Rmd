@@ -374,13 +374,6 @@ This Logistic Regression Model uses the lambda with the minimum error. We can co
 coef(cv.fit,s="lambda.min")
 ``` 
 
-# Appendix
-### Part I
-- **Shreya Agrawal:** drug_use
-- **Elizabeth Imhoff:** bad_drivers
-- **Emily Jolly:** congress_age
-
-
 ### Contributions
 - **Shreya Agrawal:** Shreya completed all of the age analyses and the logistic regression model
 - **Elizabeth Imhoff:** Elizabeth completed all of the wealth class analyses
