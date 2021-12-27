@@ -1,0 +1,387 @@
+---
+title: "Final Project_Part 2"
+author: "Shreya Agrawal, Elizabeth Imhoff, Emily Jolly"
+date: "10/20/2021"
+output: html_document
+---
+```{r, include=FALSE, warning=FALSE}
+library(tidyverse)
+library(mdsr)
+library(lubridate)
+library(readr)
+library(pander)
+library(mosaic)
+library(rpart)
+library(rpart.plot)
+library(MASS)
+library(broom)
+```
+
+```{r}
+file="/Users/emilyjolly/Documents/Classes/STAT 1261/titanic.csv"
+titanic=read.csv(file)
+```
+
+# Introduction
+When the Titanic sank in 1912, there were not enough lifeboats for all passengers on board. In addition, those who did get to board a lifeboat were not chosen randomly as women and children in first class were asked to board first, having been given priority seating. This data set contains information regarding 891 different passengers including whether they survived, their sex, their class, and the people with which they were travelling. The purpose of this study is to analyze whether these factors (being a young, upper-class woman) really did an effective job of increasing one's chances of survival on the Titanic or whether, in spite of these prioritizations, a wide variety of different passengers were able to survive.  
+
+A link to the data set can be found here: 
+<https://www.kaggle.com/c/titanic/data?select=gender_submission.csv>
+
+```{r}
+head(titanic)
+```
+
+# Survivorship by Age
+If children were given priority seating on the lifeboats, perhaps we should begin our analysis by assessing whether people in lower age groups had a higher chance of survival.
+
+### Finding the Age Range
+```{r}
+titanic %>% summarise(max.age=max(Age, na.rm=TRUE), min.age=min(Age, na.rm=TRUE))
+```
+
+This tells us the highest age of passengers aboard the Titanic was 80, and the lowest was approximately 0.
+
+### Visualizing Survivorship by Age
+As can be seen by the visualization below, the highest proportion of survivors came from passengers who were 0 to 10 years old. The lowest proportion of survivers came from passengers who were 70 to 80 years old.
+```{r}
+titanicNew <- titanic %>% mutate(AgeIncrements = ifelse(Age < 10, "0 - 10",ifelse(Age < 20, "10-20",ifelse(Age < 30,"20-30",ifelse(Age < 40,"30-40",ifelse(Age < 50,"40-50",ifelse(Age < 60,"50-60",ifelse(Age < 70,"60-70","70-80"))))))))
+                                                   
+g <- ggplot(data = titanicNew,aes(x = AgeIncrements)) +
+geom_bar(aes(fill = factor(Survived)),position = "fill") + ylab("Proportion who survived") + xlab("Age") + scale_fill_discrete(name="Survivorship",
+                       labels=c("Did not survive", "Survived"))
+
+g
+```
+
+As can be observed by the box plots, the age distribution for those who survived versus for those who did not survive, are both very similar. This could indicate that the age of a passenger did not have a very strong effect on their likelihood for survival.
+```{r}
+titanic %>% 
+  ggplot(aes(x = factor(Survived), y= Age)) + 
+  geom_boxplot()+
+  scale_x_discrete(breaks=c(0,1), labels=c("0"="No", "1"="Yes"))+
+  xlab("Did they survive")+
+  coord_flip() 
+  
+
+titanic %>% 
+  group_by(factor(Survived)) %>%
+  summarise(favstats(Age))
+```
+
+### Regression Model and Confidence Interval
+```{r}
+mod <- lm(Survived ~ Age, data = titanic)
+summary(mod) 
+
+confint(mod,'Age',data=titanic)
+```
+
+```{r}
+tidyTitanic <- titanic %>% drop_na(Age)
+
+meanAge <- mean(tidyTitanic$Age) 
+
+stdevAge <- sd(tidyTitanic$Age)
+```
+
+The Null Hypothesis is that correlation between Age and Survived is 0. The Alternative Hypothesis is that correlation is not 0. As can be seen by the test results, for females, there is not a correlation between age and whether or not they survived because the p-value is not less than 0.05. For males, there is a correlation between age and whether or not they survived because the p-value is less than 0.05. The correlation coefficient estimate for females is approximately 0.1161, weak positive correlation. The correlation coefficient estimate for males is approximately -0.1196, weak negative correlation.
+```{r}
+tidyTitanic %>% 
+  group_by(Sex) %>%  
+  do(tidy(cor.test(~ Age + Survived, alternative = "two.sided", data = . ))) 
+```
+
+# Survivorship by Sex
+Because women and children were supposedly given priority seating on the few lifeboats available, it is important to assess whether significantly more women survived the incident than men. This means that our null hypothesis is that there is no significant difference between the survival of women and men on the Titanic.
+
+### Visualizing Survivorship by Sex
+```{r}
+titanic.f=titanic %>% mutate(Survived.f=as.factor(Survived))
+
+sex_plot=ggplot(titanic.f, mapping=aes(x=Sex, fill=Survived.f)) +
+  geom_bar(position="fill") +
+  labs(title="Proportion of Survivors by Sex") +
+  xlab("Sex") + ylab("Proportion Survived") +
+  scale_fill_discrete(name="Survivorship",
+                       labels=c("Did not survive", "Survived")) +
+  theme(plot.background=element_rect("#f0f0f0"),
+        panel.background = element_rect(fill = "#f0f0f0"),
+        plot.title = element_text(size = rel(1.25), face="bold"))
+sex_plot
+
+```
+
+It is clear by this bar graph that more women survived than men. Almost 75% of all women on board survived the Titanic while only about 17% of men were able to survive. There is an obvious difference in these two proportions; however, to be certain that this difference is in fact significant, it is important to complete a hypothesis test.
+
+### Testing for Differences in Survivorship Between Sexes
+```{r}
+dim.male=titanic %>% filter(Sex=="male") %>% dim()
+dim.female=titanic %>% filter(Sex=="female") %>% dim()
+
+mal.surv=titanic %>% filter(Sex=="male") %>% summarise(sum(Survived)) %>% as.integer()
+mal.dead=titanic %>% filter(Sex=="male") %>% summarise(dim.male[1]-sum(Survived)) %>% as.integer
+fem.surv=titanic %>% filter(Sex=="female") %>% summarise(sum(Survived)) %>% as.integer
+fem.dead=titanic %>% filter(Sex=="female") %>% summarise(dim.female[1]-sum(Survived)) %>% as.integer
+
+sex.survivor=matrix(c(mal.dead,fem.dead,mal.surv,fem.surv),2,2,byrow=T)
+colnames(sex.survivor)<-c("Male","Female") 
+rownames(sex.survivor)<-c("Died","Survived")
+pander(sex.survivor)
+
+chisq.test(sex.survivor[1:2,1:2],correct=F)
+```
+
+Our null hypothesis is that there is no significant difference between male and female survivorship. By performing a chi-square test, we can assess whether the proportions of males and females who survived is actually significantly different. Again, we can see by the table that many more women survived while many more men died, and when looking at the p-value (2.2 x 10^-16) which is much lower than the necessary .05 cutoff, we can conclude that there is indeed a significant difference between the amount of men and women who survived. Thus, sex clearly played a role in increasing one's chances of survival on the Titanic as significantly more women survived.
+
+### Visualizing Differences in Survivorship due to Children
+
+Women were not the only one's given priority seating, however, as seats were reserved for children as well. Thus, we can continue to explore the data to see whether travelling with a child altered each sex's chances of survival.
+
+```{r}
+child=titanic.f %>% filter(Parch>0) %>% mutate(Child=1)
+no.child=titanic.f %>% filter(Parch==0) %>% mutate(Child=0)
+titanic.f=full_join(child,no.child)
+
+child_plot=ggplot(titanic.f, mapping=aes(x=Child, fill=Survived.f)) +
+  geom_bar(position="fill") +
+  facet_wrap(~Sex) +
+  labs(title="Proportion of Survivors by Sex and Children") +
+  xlab("Did they have a child on board") + ylab("Proportion Survived") +
+  scale_fill_discrete(name="Survivorship",
+                       labels=c("Did not survive", "Survived")) +
+  scale_x_continuous(breaks=c(0,1), labels=c("0"="No", "1"="Yes")) +
+  theme(plot.background=element_rect("#f0f0f0"),
+        panel.background = element_rect(fill = "#f0f0f0"),
+        plot.title = element_text(size = rel(1.25), face="bold"))
+child_plot
+
+num.child_plot=ggplot(titanic.f, mapping=aes(x=Parch, fill=Survived.f)) +
+  geom_bar(position="fill") +
+  facet_wrap(~Sex) +
+  labs(title="Proportion of Survivors by Number of Children") +
+  xlab("Number of Children") + ylab("Proportion Survived") +
+  scale_fill_discrete(name="Survivorship",
+                       labels=c("Did not survive", "Survived")) +
+  theme(plot.background=element_rect("#f0f0f0"),
+        panel.background = element_rect(fill = "#f0f0f0"),
+        plot.title = element_text(size = rel(1.25), face="bold"))
+num.child_plot
+```
+
+This first bar graph reveals that travelling with children decreased a woman's chances of survival while it increased a man's chances of survival. More than 75% of the women travelling without children, survived the incident while less than 75% of the women travelling with children survived. On the other hand, less than 25% of men travelling without children survived and more than 25% of men travelling with children survived. This should be a bit surprising as both women AND children were given priority seating on lifeboats, so to assess why women's chances were not increased when travelling with children, we can further divide the data by the amount of children with which they were travelling.
+
+The second bar graph reveals that, in general, the more children a woman had on board with her, the lower her chances of survival. Simultaneously, men had an increased chance of survival when travelling with only one or two children. This may be because crew members did not want to separate children from their parents and thus prioritized children and one of their guardians-- even prioritizing men if the child's mother was not on board. However, perhaps the more children the parent had, the less room there was for he or she to board the lifeboat as well. Thus, travelling with children could have increased each sex's chances to an extent, but not when the number of children was large.
+
+### Testing for Differences in Survivorship due to Children
+```{r}
+child.surv.f=titanic %>% filter(Sex=="female" & Parch>0 & Survived==1) %>% dim() %>% as.integer()
+child.dead.f=titanic %>% filter(Sex=="female" & Parch>0 & Survived==0) %>% dim() %>% as.integer()
+nochild.surv.f=titanic %>% filter(Sex=="female" & Parch==0 & Survived==1) %>% dim() %>% as.integer()
+nochild.dead.f=titanic %>% filter(Sex=="female" & Parch==0 & Survived==0) %>% dim() %>% as.integer()
+
+fem.child=matrix(c(child.dead.f[1],nochild.dead.f[1],child.surv.f[1],nochild.surv.f[1]),2,2,byrow=T)
+colnames(fem.child)<-c("Had Child","Had no Child") 
+rownames(fem.child)<-c("Died","Survived")
+pander(fem.child)
+
+chisq.test(fem.child[1:2,1:2],correct=F)
+
+child.surv.m=titanic %>% filter(Sex=="male" & Parch>0 & Survived==1) %>% dim() %>% as.integer()
+child.dead.m=titanic %>% filter(Sex=="male" & Parch>0 & Survived==0) %>% dim() %>% as.integer()
+nochild.surv.m=titanic %>% filter(Sex=="male" & Parch==0 & Survived==1) %>% dim() %>% as.integer()
+nochild.dead.m=titanic %>% filter(Sex=="male" & Parch==0 & Survived==0) %>% dim() %>% as.integer()
+
+mal.child=matrix(c(child.dead.m[1],nochild.dead.m[1],child.surv.m[1],nochild.surv.m[1]),2,2,byrow=T)
+colnames(mal.child)<-c("Had Child","Had no Child") 
+rownames(mal.child)<-c("Died","Survived")
+pander(mal.child)
+
+
+chisq.test(mal.child[1:2,1:2],correct=F)
+```
+
+The visible difference in each sex's chances of survival due to children is small, so we cannot immediately assume that the difference is significant. Thus, we can run two different chi-square tests to see 1) if the change in a woman's chances of survival due to children is significant and 2) if the change in a man's chances of survival due to children is significant. Looking at the quantities of women in the first chi-square, it's difficult to assess whether the difference will be significant as approximately half of the women who died did have children whereas the other half didn't. The p-value from the analysis, however, (.01636) is lower than our .05 cutoff, allowing us to conclude that travelling with children significantly decreased a woman's chances of survival.
+
+The quantities of men in the second table is slightly more telling as the numbers occupy a large range of values. The result from this chi-square reveals an even lower p-value (.0009447) that is once again below the necessary .05 cutoff. Therefore, we can conclude that travelling with children significantly increases a man's chances of survival aboard the Titanic.
+
+# Wealth Status
+This section will determine  whether the wealth of the passenger, based on ticket fare and what class the passenger was in, predicts whether the passenger survived or not. As it has been described that passengers of a higher social class were given priority seating on life boats, we should assess whether passengers in lower classes (1 being the equivalent to travelling first class), had an increased chance of survival.
+
+### Visualization of Survivorship by Wealth
+This first graph displays the proportion of passengers in each class, to get an idea of how the number of passengers in each class compares to the other classes.
+```{r, message=FALSE}
+titanic_new <- titanic %>% mutate(Class = Pclass)
+plot_class <- ggplot(titanic_new,aes(x = Class, y = ..prop.., group = 1))+
+  geom_bar(fill = "blue") + ylab("Proportion")
+plot_class
+```
+
+From this graph, it is clear that there are significantly more passengers in third class than first or second class. 
+
+This next graph is showing a comparison between the three classes of passengers by showing the proportion of those passengers that survived or did not survive.
+```{r}
+counts_titanic <- titanic_new %>% 
+  group_by(Class, Survived) %>% 
+  summarise(Count = n())
+prop_titanic <- counts_titanic %>% mutate(total_count = sum(Count)) %>% 
+  mutate(prop_class = Count/total_count)
+prop_titanic
+
+count_graph <- ggplot(prop_titanic, aes(x = Class, y = Survived, fill = prop_class))+
+ geom_tile() + labs(title = "Proportion of Each Class that Survived")
+count_graph
+
+```
+
+The top block for each class represents the proportion of the class that survived, while the bottom block represents the proportion of that class that did not survive. This graph shows that there are more 1st class passengers that survived than did not survive. Also, the graph shows that there are slightly more 2nd class passengers that did not survive than survived. It also shows that there are significantly more 3rd class passengers that did not survive than did survive.  
+
+This next graph shows the association between wealth of the passenger, through ticket fare and class, and survival of the passengers. 
+```{r, message=FALSE}
+class_graph <- ggplot(titanic_new, aes(y = Survived, x = Fare)) + geom_point(aes(color = Class)) + labs(title ="Association Between Wealth and Survival")
+class_graph
+```
+
+The graph does not show a clear association between the wealth of the passenger and the passenger's survival. I will continue by doing a decision tree with the same predictors to see if I can get results that can conclude if there is an association. 
+
+### Predicting Survivorship Through Wealth Associated Variables
+Below, a decision tree is created with Fare and Class to predict survivorship of the passenger.
+```{r}
+form_tree1 <- as.formula(Survived~Fare + Class)
+mod_tree_1 <- rpart(form_tree1, data = titanic_new)
+mod_tree_1
+
+rpart.plot(mod_tree_1)
+```
+
+Based on the outcome, this decision tree does imply that being in a lower class and having a lower fare is associated with lower likelihood of survival. However, I need to split the data into a training and testing set to do a better analysis.
+
+
+Below, the data is split into a testing and training set. 
+```{r}
+set.seed(100)
+train <- titanic_new %>% sample_frac(size = 0.8)
+test <- titanic_new %>% setdiff(train)
+```
+
+Next, three different decision trees are created, with different cp's, to see which gives the best result. A confusion matrix is created, so it is clear if the model does well at predicting new data. The misclassification error rate is also calculated, to quantify how many times the tree incorrectly predicted survival. 
+```{r}
+form_tree <- as.formula("Survived~Fare + Class")
+mod_tree_2 <- rpart(form_tree, data = train, control = rpart.control(cp = 0.05))
+mod_tree_3 <- rpart(form_tree, data = train, control = rpart.control(cp = 0.01))
+mod_tree_4 <- rpart(form_tree, data = train, control = rpart.control(cp = 0.005))
+
+confusion_matrix <- function(data, y, mod){
+  confusion_matrix <- data %>% 
+    mutate(pred = predict(mod, newdata = data), y=y) %>% 
+    dplyr::select(y, pred) %>% 
+    table()
+} 
+misclass <- function(confusion){
+  misclass <- 1- sum(diag(confusion))/sum(confusion)
+  misclass
+}
+```
+
+```{r}
+confusion_tree2_test <- confusion_matrix(test, test$Survived, mod_tree_2)
+confusion_tree2_train <- confusion_matrix(train, train$Survived, mod_tree_2)
+
+confusion_tree3_test <- confusion_matrix(test, test$Survived, mod_tree_3)
+confusion_tree3_train <- confusion_matrix(train, train$Survived, mod_tree_3)
+
+confusion_tree4_test <- confusion_matrix(test, test$Survived, mod_tree_4)
+confusion_tree4_train <- confusion_matrix(train, train$Survived, mod_tree_4)
+
+tibble(
+  model = c("tree2", "tree3", "tree4"),
+  cp = c(0.05, 0.01, 0.005),
+  trainerror = c(misclass(confusion_tree2_train), misclass(confusion_tree3_train), misclass(confusion_tree4_train)),
+  testerror = c(misclass(confusion_tree2_test), misclass(confusion_tree3_test), misclass(confusion_tree4_test))
+)
+```
+
+The misclassification rate is high for both the training and testing data sets, for trees 3 and 4 trees. However, tree 2, with a cp of 0.05 gives good levels of error rate. So, the best cp for this data is when the cp = 0.05. 
+
+Overall, the data implies that higher ticket fares and higher class of the passenger are associated with a greater chance of survivorship. For testing the misclassification rate with the decision tree, when the cp = 0.05, the error rates are relatively low, indicating that using the model with wealth and ticket fare is a decent model for predicting survivorship. 
+
+# Prediction Model
+### Finding the Significant Predictors
+```{r}
+full.mod=lm(Survived~Pclass+Sex+Age+Parch+Fare, data=titanic.f)
+final <- stepAIC(full.mod,direction = 'both', trace=0)
+summary(final)
+```
+
+The results of this AIC step model tell us that age, sex, and class are the only significant predictors for survival of the variables that we have explored. We have chosen to ignore Parch, whether a passenger was travelling with their parents or children, as this variable had a p-value above our .05 cutoff and is thus not significant. Fare was probably also excluded from the model because class and fare will give us very similar results and thus only one of them is needed in the final model. It is also important to note that while age was not a significant predictor of survival on its own, it becomes significant after class and sex are added to the model. This is likely because the children of first class passengers were particularly prioritized.
+
+
+### Splitting the data into a training and testing data set
+```{r} 
+set.seed(100)
+train <- tidyTitanic %>% sample_frac(size = 0.8)
+test <- tidyTitanic %>% setdiff(train)
+```  
+
+### Fitting titanic data to a logistic regression model 
+```{r}  
+library(glmnet)
+form_lr1 <- as.formula("Survived ~ Age + Sex + Pclass")
+predictors <- model.matrix(form_lr1, data = train)
+fit1 <- glmnet(predictors, train$Survived, family = "binomial", lambda = 0)
+fit1$beta
+
+``` 
+
+From this model, we can observe that as Age increases, the passenger's chance for Survival decreases. If a passenger is male, there chance for survival decreases. If the passenger was travelling in a higher class, like class 3, their chance of survival decreased. Overall, Age and class have the lowest relationship to a passenger's chance for survival, and a passenger's sex has the highest relationship to a passenger's chance for survival. 
+
+### Calculating the misclassification rate of the logistic regression 
+```{r}  
+logistic.misclassrate <- function(dataset,y, fit,form ){
+  misclass_lr <- dataset %>% 
+  mutate(pred.logistic = predict(fit, newx = model.matrix(form, data  = dataset), 
+         type = "class")) %>% 
+  mutate(misclassify = ifelse(y != pred.logistic, 1,0))  %>%
+  summarize(misclass.rate=mean(misclassify))
+  return(misclass_lr$misclass.rate)
+}
+misclassrate<-logistic.misclassrate(test,test$Survived,fit1,form_lr1)
+misclassrate
+
+
+```
+
+This logistic model gives the testing misclassification rate of 0.23 
+
+### Finding the optimal lambda to use for logistic regression model
+```{r}  
+cv.fit <- cv.glmnet(predictors, train$Survived, nfolds=10,
+                    family = "binomial", type.measure = "class")
+plot(cv.fit)
+
+
+``` 
+
+### Fitting titanic data to optimal Logistic Regression models
+
+This Logistic Regression Model uses the largest lambda within 1 standard error of the minimum
+```{r} 
+coef(cv.fit,s="lambda.1se")
+``` 
+
+This Logistic Regression Model uses the lambda with the minimum error. We can conclude that this model is the most optimal out of the three logistic regression models, and thus make our conclusion based off of this model. 
+```{r} 
+coef(cv.fit,s="lambda.min")
+``` 
+
+# Appendix
+### Part I
+- **Shreya Agrawal:** drug_use
+- **Elizabeth Imhoff:** bad_drivers
+- **Emily Jolly:** congress_age
+
+
+### Contributions
+- **Shreya Agrawal:** Shreya completed all of the age analyses and the logistic regression model
+- **Elizabeth Imhoff:** Elizabeth completed all of the wealth class analyses
+- **Emily Jolly:** Emily completed all of the sex analyses and the AIC step
